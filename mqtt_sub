@@ -139,6 +139,7 @@ main_loop() {
 }
 
 # Entry point
+instances=$(ps | grep "$MQTT_BINARY" | grep -v "grep" | wc -l)
 if [ ! -z "$1" ]; then
 	echo "Usage: $0 [debug]"
 	echo "Description:"
@@ -151,10 +152,14 @@ if [ ! -z "$1" ]; then
 	echo "  <command> or <command1>;<command2>  # Multiple commands can be separated by semicolons"
 	if [ "$1" = "debug" ]; then
 		echo ""
-		main_loop "$1"
+		if [[ $instances -eq 0 ]]; then
+			main_loop "$1"
+		fi
 	else
 		exit 1
 	fi
 else
-	main_loop
+	if [[ $instances -eq 0 ]]; then
+		main_loop
+	fi
 fi
