@@ -1,0 +1,162 @@
+#!/bin/sh
+
+# MQTT conf from WebUI
+conf=$(cat /etc/webui/mqtt.conf)
+
+# Commands
+BUSYBOX_BINARY="busybox"
+MOTOR_BINARY="motors"
+MQTT_BINARY="mosquitto_sub"
+IRCUT_CMD="ircut"
+IRLED_CMD="irled"
+COLOR_CMD="color"
+DAYNIGHT_CMD="daynight"
+IAC_CMD="iac"
+IMP_CMD="imp-control"
+PTZ_PRESET_CMD="ptz_presets"
+
+if [ ! -z "$conf" ]; then
+	enabled=$(echo "$conf" | grep mqtt_enabled | awk -F '"' '{print $2}')
+	if [ "$enabled" = "true" ]; then
+		mqtt_host=$(echo "$conf" | grep mqtt_host | awk -F '"' '{print $2}')
+		mqtt_port=$(echo "$conf" | grep mqtt_port | awk -F '"' '{print $2}')
+		mqtt_client_id=$(echo "$conf" | grep mqtt_client_id | awk -F '"' '{print $2}')
+		mqtt_username=$(echo "$conf" | grep mqtt_username | awk -F '"' '{print $2}')
+		mqtt_password=$(echo "$conf" | grep mqtt_password | awk -F '"' '{print $2}')
+		mqtt_topic=$(echo "$conf" | grep mqtt_topic | awk -F '"' '{print $2}')
+	fi
+fi
+
+# Night vision and IR commands
+process_ir_command() {
+	case "$1" in
+		"night-on") echo "Switching to night mode"; $IRCUT_CMD on ;;
+		"night-off") echo "Switching to day mode"; $IRCUT_CMD off ;;
+		"night-toggle") echo "Toggling night/day mode"; $IRCUT_CMD toggle ;;
+		"ir850-on") echo "IR850 on"; $IRLED_CMD on ir850 ;;
+		"ir850-off") echo "IR850 off"; $IRLED_CMD off ir850 ;;
+		"ir850-toggle") echo "IR850 toggle"; $IRLED_CMD toggle ir850 ;;
+		"ir940-on") echo "IR940 on"; $IRLED_CMD on ir940 ;;
+		"ir940-off") echo "IR940 off"; $IRLED_CMD off ir940 ;;
+		"ir940-toggle") echo "IR940 toggle"; $IRLED_CMD toggle ir940 ;;
+		"irwhite-on") echo "White IR on"; $IRLED_CMD on white ;;
+		"irwhite-off") echo "White IR off"; $IRLED_CMD off white ;;
+		"irwhite-toggle") echo "White IR toggle"; $IRLED_CMD toggle white ;;
+		"color-on") echo "Color mode on"; $COLOR_CMD on ;;
+		"color-off") echo "Color mode off"; $COLOR_CMD off ;;
+		"color-toggle") echo "Toggling color mode"; $COLOR_CMD toggle ;;
+		"daynight-day") echo "Switching to day mode"; $DAYNIGHT_CMD day ;;
+		"daynight-night") echo "Switching to night mode"; $DAYNIGHT_CMD night ;;
+		"daynight-toggle") echo "Toggling day/night mode"; $DAYNIGHT_CMD toggle ;;
+		*) echo "Unknown IR command: $1" ;;
+	esac
+}
+
+# Image adjustments
+process_image_command() {
+	case "$1" in
+		"flip-none") echo "Disable image flip"; $IMP_CMD 0 ;;
+		"flip-mirror") echo "Image mirror"; $IMP_CMD 1 ;;
+		"flip-flip") echo "Image flip"; $IMP_CMD 2 ;;
+		"flip-flip_and_mirror") echo "image flip and mirror"; $IMP_CMD 3 ;;
+		*) echo "Unknown Image command: $1" ;;
+	esac
+}
+
+# General commands
+process_general_command() {
+	case "$1" in
+		"reboot") echo "Restarting..."; $BUSYBOX_BINARY reboot -d 1 -f ;;
+		"siren-on") echo "Activating Siren"; $IAC_CMD -f file.pcm;;
+		"siren-off") echo "Killing Siren"; kill pid;;
+		*) echo "Unknown general command: $1" ;;
+	esac
+}
+
+# PTZ movement commands
+process_ptz_command() {
+	local direction speed stepx stepy
+	direction=$(echo "$1" | cut -d':' -f1)
+	speed=$(echo "$1" | cut -d':' -f2)
+	stepx=$(echo "$1" | cut -d':' -f3)
+	stepy=$(echo "$1" | cut -d':' -f4)
+
+	case "$direction" in
+		"ptz-preset") preset_num=$(echo "$1" | cut -d':' -f2) && [ -n "$preset_num" ] && echo "Moving to PTZ preset $preset_num" && $PTZ_PRESET_CMD "$preset_num" ;;
+		"ptz-topleft") echo "Moving top-left"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
+		"ptz-left") echo "Moving left"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" ;;
+		"ptz-bottomleft") echo "Moving bottom-left"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
+		"ptz-topright") echo "Moving top-right"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
+		"ptz-right") echo "Moving right"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" ;;
+		"ptz-bottomright") echo "Moving bottom-right"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
+		"ptz-up") echo "Moving up"; $MOTOR_BINARY -s "$speed" -d g -y "$stepy" ;;
+		"ptz-down") echo "Moving down"; $MOTOR_BINARY -s "$speed" -d g -y "$stepy" ;;
+		"ptz-home") echo "Moving to home"; $MOTOR_BINARY -s "$speed" -d b ;;
+		"ptz-reset") echo "Resetting PTZ"; $MOTOR_BINARY -r ;;
+		*) echo "Unknown PTZ command: $direction" ;;
+	esac
+}
+
+# Main processing function for MQTT messages
+process_command() {
+	case "$1" in
+		"$mqtt_topic/ir") process_ir_command "$2" ;;
+		"$mqtt_topic/image") process_image_command "$2" ;;
+		"$mqtt_topic/general") process_general_command "$2" ;;
+		"$mqtt_topic/ptz") process_ptz_command "$2" ;;
+		*) echo "Unknown topic: $1" ;;
+	esac
+}
+
+# Main loop to read MQTT messages
+main_loop() {
+	local debug="$1"
+
+	if [ "$enabled" = "true" ]; then
+		echo "Starting MQTT subscription loop for device: $mqtt_topic"
+		while true; do
+			$MQTT_BINARY -v -h "$mqtt_host" -p "$mqtt_port" -u "$mqtt_username" -P "$mqtt_password" -i "$mqtt_client_id" -t "$mqtt_topic/#" |
+			while read -r line; do
+#				topic=$(echo "$line" | awk -F '/' '{print $NF}' | cut -d' ' -f1)
+#				payload=$(echo "$line" | awk -F '/' '{print $NF}' | cut -d' ' -f2-)
+				topic=$(echo "$line" | cut -d' ' -f1)
+				payload=$(echo "$line" | cut -d' ' -f2-)
+
+				[ "$debug" = "debug" ] && echo "Received: topic=$topic, payload=$payload"
+
+				# Split and process each command in payload
+				while [ -n "$payload" ]; do
+					command=$(echo "$payload" | cut -d';' -f1)
+					payload=$(echo "$payload" | sed "s/^$command;*//")
+
+					[ "$debug" = "debug" ] && echo "Processing command: $command"
+					process_command "$topic" "$command"
+				done
+			done
+			sleep 10
+		done
+	else
+		echo "MQTT settings not enabled/configured in '/etc/webui/mqtt.conf' (http://%IP%/x/plugin-send2mqtt.cgi)"
+	fi
+}
+
+# Entry point
+if [ ! -z "$1" ]; then
+	echo "Usage: $0 [debug]"
+	echo "Description:"
+	echo "  debug       - Optional. If specified, the script runs in the foreground and displays debug information."
+	echo ""
+	echo "Example Commands:"
+	echo "  $0 debug          # Runs in the foreground with debug output"
+	echo ""
+	echo "Command format in payload:"
+	echo "  <command> or <command1>;<command2>  # Multiple commands can be separated by semicolons"
+	if [ "$1" = "debug" ]; then
+		echo ""
+		main_loop "$1"
+	else
+		exit 1
+	fi
+else
+	main_loop
+fi
