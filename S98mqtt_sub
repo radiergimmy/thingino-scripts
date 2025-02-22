@@ -1,0 +1,21 @@
+#!/bin/sh
+
+. /etc/init.d/rc.common
+
+case "$1" in
+	start)
+		starting
+		mqtt_sub &
+		;;
+	stop)
+		stopping
+		pkill -f mosquitto_sub
+		pkill -f mqtt_sub
+		ok
+		;;
+	*)
+		die "Usage: $0 {start|stop}"
+		;;
+esac
+
+exit 0
