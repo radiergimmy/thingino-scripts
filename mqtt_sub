@@ -54,21 +54,67 @@ process_ir_command() {
 
 # Image adjustments
 process_image_command() {
+	cur_state=$($IMP_CMD flip)
+	des_state=-1
 	case "$1" in
-		"flip-none") echo "Disable image flip"; $IMP_CMD 0 ;;
-		"flip-mirror") echo "Image mirror"; $IMP_CMD 1 ;;
-		"flip-flip") echo "Image flip"; $IMP_CMD 2 ;;
-		"flip-flip_and_mirror") echo "image flip and mirror"; $IMP_CMD 3 ;;
+		"reset")
+			echo "Disable image flip"
+			des_state=0
+		;;
+		"mirror")
+			echo "Image mirror"
+			if [[ $cur_state -eq 0 ]]; then
+				des_state=1
+			elif [[ $cur_state -eq 1 ]]; then
+				des_state=0
+			elif [[ $cur_state -eq 2 ]]; then
+				des_state=3
+			elif [[ $cur_state -eq 3 ]]; then
+				des_state=2
+			fi
+		;;
+		"flip")
+			echo "Image flip"
+			if [[ $cur_state -eq 0 ]]; then
+				des_state=2
+			elif [[ $cur_state -eq 1 ]]; then
+				des_state=3
+			elif [[ $cur_state -eq 2 ]]; then
+				des_state=0
+			elif [[ $cur_state -eq 3 ]]; then
+				des_state=1
+			fi
+		;;
+		"flip_and_mirror")
+			echo "image flip and mirror"
+			if [[ $cur_state -eq 0 ]]; then
+				des_state=3
+			elif [[ $cur_state -eq 3 ]]; then
+				des_state=0
+			fi
+		"mirror_and_flip")
+			echo "image flip and mirror"
+			if [[ $cur_state -eq 0 ]]; then
+				des_state=3
+			elif [[ $cur_state -eq 3 ]]; then
+				des_state=0
+			fi
+		;;
 		*) echo "Unknown Image command: $1" ;;
 	esac
+
+	if [[ $des_state -ge 0 ]]; then
+		$IMP_CMD flip $des_state
+	fi
 }
+
 
 # General commands
 process_general_command() {
 	case "$1" in
 		"reboot") echo "Restarting..."; $BUSYBOX_BINARY reboot -d 1 -f ;;
-		"siren-on") echo "Activating Siren"; $IAC_CMD -f file.pcm;;
-		"siren-off") echo "Killing Siren"; kill pid;;
+#		"siren-on") echo "Activating Siren"; $IAC_CMD -f file.pcm;;
+#		"siren-off") echo "Killing Siren"; kill pid;;
 		*) echo "Unknown general command: $1" ;;
 	esac
 }
@@ -77,22 +123,17 @@ process_general_command() {
 process_ptz_command() {
 	local direction speed stepx stepy
 	direction=$(echo "$1" | cut -d':' -f1)
-	speed=$(echo "$1" | cut -d':' -f2)
-	stepx=$(echo "$1" | cut -d':' -f3)
-	stepy=$(echo "$1" | cut -d':' -f4)
-
+	step=$(echo "$1" | cut -d':' -f2)
+	speed=$(echo "$1" | cut -d':' -f3)
+		
 	case "$direction" in
-		"ptz-preset") preset_num=$(echo "$1" | cut -d':' -f2) && [ -n "$preset_num" ] && echo "Moving to PTZ preset $preset_num" && $PTZ_PRESET_CMD "$preset_num" ;;
-		"ptz-topleft") echo "Moving top-left"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
-		"ptz-left") echo "Moving left"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" ;;
-		"ptz-bottomleft") echo "Moving bottom-left"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
-		"ptz-topright") echo "Moving top-right"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
-		"ptz-right") echo "Moving right"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" ;;
-		"ptz-bottomright") echo "Moving bottom-right"; $MOTOR_BINARY -s "$speed" -d g -x "$stepx" -y "$stepy" ;;
-		"ptz-up") echo "Moving up"; $MOTOR_BINARY -s "$speed" -d g -y "$stepy" ;;
-		"ptz-down") echo "Moving down"; $MOTOR_BINARY -s "$speed" -d g -y "$stepy" ;;
-		"ptz-home") echo "Moving to home"; $MOTOR_BINARY -s "$speed" -d b ;;
-		"ptz-reset") echo "Resetting PTZ"; $MOTOR_BINARY -r ;;
+		"preset") preset_num=$(echo "$1" | cut -d':' -f2) && [ -n "$preset_num" ] && echo "Moving to PTZ preset $preset_num" && $PTZ_PRESET_CMD "$preset_num" ;;
+		"left") echo "Moving left"; $MOTOR_BINARY -s "$speed" -d g -x "-$step" ;;
+		"right") echo "Moving right"; $MOTOR_BINARY -s "$speed" -d g -x "$step" ;;
+		"up") echo "Moving up"; $MOTOR_BINARY -s "$speed" -d g -y "-$step" ;;
+		"down") echo "Moving down"; $MOTOR_BINARY -s "$speed" -d g -y "$step" ;;
+		"home") echo "Moving to home"; $MOTOR_BINARY -s "$speed" -d b ;;
+		"reset") echo "Resetting PTZ"; $MOTOR_BINARY -r ;;
 		*) echo "Unknown PTZ command: $direction" ;;
 	esac
 }
