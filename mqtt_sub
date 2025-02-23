@@ -92,6 +92,7 @@ process_image_command() {
 			elif [[ $cur_state -eq 3 ]]; then
 				des_state=0
 			fi
+		;;
 		"mirror_and_flip")
 			echo "image flip and mirror"
 			if [[ $cur_state -eq 0 ]]; then
