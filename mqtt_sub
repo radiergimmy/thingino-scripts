@@ -63,6 +63,12 @@ process_image_command() {
 		;;
 		"mirror")
 			echo "Image mirror"
+			if [ `echo "$cur_state % 2" | bc` -eq 0 ]; then
+				des_state=$(($cur_state+1))
+			else
+				des_state=$(($cur_state-1))
+			fi
+			: '
 			if [[ $cur_state -eq 0 ]]; then
 				des_state=1
 			elif [[ $cur_state -eq 1 ]]; then
@@ -72,9 +78,24 @@ process_image_command() {
 			elif [[ $cur_state -eq 3 ]]; then
 				des_state=2
 			fi
+
+			case "$cur_state" in
+				"0") des_state=1 ;;
+				"1") des_state=0 ;;
+				"2") des_state=3 ;;
+				"3") des_state=2 ;;
+			esac
+			'
 		;;
 		"flip")
 			echo "Image flip"
+			if [[ $cur_state -le 1 ]]; then
+				des_state=$(($cur_state+2))
+			else
+				des_state=$(($cur_state-2))
+			fi
+
+			: '
 			if [[ $cur_state -eq 0 ]]; then
 				des_state=2
 			elif [[ $cur_state -eq 1 ]]; then
@@ -84,22 +105,42 @@ process_image_command() {
 			elif [[ $cur_state -eq 3 ]]; then
 				des_state=1
 			fi
+
+			case "$cur_state" in
+				"0") des_state=2 ;;
+				"1") des_state=3 ;;
+				"2") des_state=0 ;;
+				"3") des_state=1 ;;
+			esac
+			'
 		;;
 		"flip_and_mirror")
 			echo "image flip and mirror"
+			case "$cur_state" in
+				"0") des_state=3 ;;
+				"3") des_state=0 ;;
+			esac
+			: '
 			if [[ $cur_state -eq 0 ]]; then
 				des_state=3
 			elif [[ $cur_state -eq 3 ]]; then
 				des_state=0
 			fi
+			'
 		;;
 		"mirror_and_flip")
 			echo "image flip and mirror"
+			case "$cur_state" in
+				"0") des_state=3 ;;
+				"3") des_state=0 ;;
+			esac
+			: '
 			if [[ $cur_state -eq 0 ]]; then
 				des_state=3
 			elif [[ $cur_state -eq 3 ]]; then
 				des_state=0
 			fi
+			'
 		;;
 		*) echo "Unknown Image command: $1" ;;
 	esac
